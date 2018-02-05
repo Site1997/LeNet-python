@@ -34,6 +34,7 @@ class CNN(object):
         self.l6 = self.relu(self.l5, deriv=False)            # (batch_sz, 200)
         self.l7 = self.fully_connect(self.l6, self.fc2)      # (batch_sz, 10)
         self.l8 = self.relu(self.l7, deriv=False)            # (batch_sz, 10)
+        print self.l8
         self.l9 = self.softmax(self.l8)                      # (batch_sz, 10)
         return self.l9
 
@@ -83,8 +84,11 @@ class CNN(object):
         return x * (x > 0)
 
     def softmax(self, x):
-        e_x = np.exp(x - np.max(x))
-        return e_x / e_x.sum()
+        N, class_num = x.shape
+        row_max = np.array([np.max(x[i])*np.ones(class_num) for i in range(N)])
+        e_x = np.exp(x - row_max)
+        row_exp_sum = np.array([np.sum(e_x[i])*np.ones(class_num) for i in range(N)])
+        return e_x / row_exp_sum
 
 
 def convertToOneHot(labels):
@@ -110,8 +114,8 @@ if __name__ == '__main__':
         output_label = train_labs[st_idx : st_idx + batch_sz]
         softmax_output = my_CNN.forward_prop(input_data)
         my_CNN.backward_prop(softmax_output, output_label)
-        '''
         break
+        '''
         if iters % 50 == 0:
             correct_list = [int(np.argmax(softmax_output[i])==np.argmax(output_label[i])) for i in range(batch_sz)]
             accuracy = float(np.array(correct_list).sum()) / batch_sz
