@@ -13,7 +13,8 @@ class LeNet(object):
     #The network is like:
     #    conv1 -> pool1 -> conv2 -> pool2 -> fc1 -> relu -> fc2 -> relu -> softmax
     # l0      l1       l2       l3        l4     l5      l6     l7      l8        l9
-    def __init__(self):
+    def __init__(self, lr=0.1):
+        self.lr = lr
         # 6 convolution kernal, each has 5 * 5 size,                         output: 6 * (24,24)
         self.conv1 = 2*np.random.random((6, 5, 5)) - 1                               # (6, 5, 5)
         # the size for max_pool is 2 * 2, stride = 2                         output: 6 * (12, 12)
@@ -29,6 +30,7 @@ class LeNet(object):
         self.fc2 = 2*np.random.random((200, 10)) - 1                                 # (200, 10)
         # relu layer
         # softmax layer
+
     def forward_prop(self, input_data):
         self.l0 = np.expand_dims(input_data, axis=1) / 255   # (batc_sz, 1, 28, 28)
         self.l1 = self.convolution(self.l0, self.conv1)      # (batc_sz, 6, 24, 24)
@@ -43,20 +45,16 @@ class LeNet(object):
         return self.l9
 
     def backward_prop(self, softmax_output, output_label):
-        l8_delta = softmax_output - output_label                                # (batch_sz, 10)
-        l7_delta = self.relu(self.l8, l8_delta, deriv=True)                     # (batch_sz, 10)
-        l6_delta = self.fully_connect(self.l6, self.fc2, l7_delta, deriv=True)  # (batch_sz, 200)
-        l5_delta = self.relu(self.l6, l6_delta, deriv=True)                     # (batch_sz, 200)
-        l4_delta = self.fully_connect(self.l4, self.fc1, l5_delta, deriv=True)  # (batch_sz, 16, 4, 4)
-        l3_delta = self.mean_pool(self.l3, self.pool2, l4_delta, deriv=True)    # (batch_sz, 16, 8, 8)
-        #l2_delta = self.convolution(self.l2, self.conv2, l3_delta, deriv=True) # (batch_sz, 6, 12, 12)
-        #TODO
+        l8_delta             = softmax_output - output_label                                # (batch_sz, 10)
+        l7_delta             = self.relu(self.l8, l8_delta, deriv=True)                     # (batch_sz, 10)
+        l6_delta, self.fc2   = self.fully_connect(self.l6, self.fc2, l7_delta, deriv=True)  # (batch_sz, 200)
+        l5_delta             = self.relu(self.l6, l6_delta, deriv=True)                     # (batch_sz, 200)
+        l4_delta, self.fc1   = self.fully_connect(self.l4, self.fc1, l5_delta, deriv=True)  # (batch_sz, 16, 4, 4)
+        l3_delta             = self.mean_pool(self.l3, self.pool2, l4_delta, deriv=True)    # (batch_sz, 16, 8, 8)
+        l2_delta, self.conv2 = self.convolution(self.l2, self.conv2, l3_delta, deriv=True)  # (batch_sz, 6, 12, 12)
+        l1_delta             = self.mean_pool(self.l1, self.pool1, l2_delta, deriv=True)    # (batch_sz, 6, 24, 24)
+        l0_delta, self.conv1 = self.convolution(self.l0, self.conv1, l1_delta, deriv=True)  # (batch_sz, 6, 12, 12)
 
-        '''
-        l7_delta = np.dot(l8_delta, self.w2.T) * self.sigmoid(self.l1, True)         # (batch_sz , 5)
-        self.w2 += lr * np.array(np.dot(self.l1.T, l2_delta), dtype=np.float32)      # (5 , 1)
-        self.w1 += lr * np.array(np.dot(self.l0.T, l1_delta), dtype=np.float32)      # (4 , 5)
-        '''
 
     def convolution(self, input_map, kernal, front_delta=None, deriv=False):
         N, C, W, H = input_map.shape
@@ -67,42 +65,60 @@ class LeNet(object):
                 for kId in range(K_NUM):
                     for cId in range(C):
                         # TODO multi kernals; kernal[kId,:,:]?;
-                        feature_map[imgId][kId] += convolve2d(input_map[imgId][cId], kernal[kId,::-1,::-1], mode='valid')
+                        feature_map[imgId][kId] += convolve2d(input_map[imgId][cId], kernal[kId,:,:], mode='valid')
+                    # TODO need divisoin?
                     feature_map[imgId][kId] /= C
             return feature_map
         else :
-            return 0
+            # front->back (propagate loss)
+            back_delta = np.zeros((N, C, W, H))
+            kernal_gradient = np.zeros((K_NUM, K_W, K_H))
+            for imgId in range(N):
+                for cId in range(C):
+                    for kId in range(K_NUM):
+                        padded_front_delta = \
+                          np.pad(front_delta[imgId][kId], [(K_W-1, K_H-1),(K_W-1, K_H-1)], mode='constant', constant_values=0)
+                        back_delta[imgId][cId] += \
+                          convolve2d(padded_front_delta, kernal[kId,::-1,::-1], mode='valid')
+                        kernal_gradient[kId] += \
+                          convolve2d(front_delta[imgId][kId], input_map[imgId][cId][::-1][::-1], mode='valid')
+            # update weights
+            kernal += self.lr * kernal_gradient
+            return back_delta, kernal
+
     def mean_pool(self, input_map, pool, front_delta=None, deriv=False):
         N, C, W, H = input_map.shape
+        P_W, P_H = tuple(pool)
         if deriv == False:
-            feature_map = np.zeros((N, C, W/pool[0], H/pool[1]))
-            for imgId in range(N):
-                for cId in range(C):
-                    feature_map[imgId][cId] = block_reduce(input_map[imgId][cId], tuple(pool), func=np.mean)
+            feature_map = np.zeros((N, C, W/P_W, H/P_H))
+            feature_map[:][:] = block_reduce(input_map[:][:], tuple((1, 1, P_W, P_H)), func=np.mean)
             return feature_map
         else :
+            # front->back (propagate loss)
             back_delta = np.zeros((N, C, W, H))
-            for imgId in range(N):
-                for cId in range(C):
-                    back_delta[imgId][cId] = front_delta[imgId][cId].repeat(pool[0], axis = 0).repeat(pool[1], axis = 1)
-                    back_delta[imgId][cId] /= (pool[0] * pool[1])
+            back_delta = front_delta.repeat(P_W, axis = 2).repeat(P_H, axis = 3)
+            back_delta /= (P_W * P_H)
             return back_delta
 
     def fully_connect(self, input_data, fc, front_delta=None, deriv=False):
+        N = input_data.shape[0]
         if deriv == False:
-            N = input_data.shape[0]
             input_data = input_data.reshape(N, -1)
-            output_data = np.array(np.dot(input_data, fc), dtype=np.float64)
+            output_data = np.dot(input_data, fc) # dtype=np.float64
             return output_data
         else :
+            # front->back (propagate loss)
             back_delta = np.dot(front_delta, fc.T)
             back_delta = back_delta.reshape(input_data.shape)
-            return back_delta
+            # update weights
+            fc += self.lr * np.dot(input_data.reshape(N, -1).T, front_delta)
+            return back_delta, fc
 
     def relu(self, x, front_delta=None, deriv=False):
         if deriv == False:
             return x * (x > 0)
         else :
+            # propagate loss
             return front_delta * 1. * (x > 0)
 
     def softmax(self, x):
@@ -128,7 +144,7 @@ if __name__ == '__main__':
     train_labs = convertToOneHot(train_labs)
     print train_labs.shape
     #print np.max(train_imgs), np.min(train_imgs)
-    my_CNN = LeNet()
+    my_CNN = LeNet(lr=0.1)
     for iters in range(max_iter):
         # starting index and ending index for input data
         st_idx = (iters % 937) * batch_sz;
