@@ -15,19 +15,19 @@ class LeNet(object):
     # l0      l1       l2       l3        l4     l5      l6     l7      l8        l9
     def __init__(self, lr=0.1):
         self.lr = lr
-        # 6 convolution kernal, each has 5 * 5 size,                         output: 6 * (24,24)
-        self.conv1 = 2*np.random.random((6, 5, 5)) - 1                               # (6, 5, 5)
-        # the size for max_pool is 2 * 2, stride = 2                         output: 6 * (12, 12)
+        # 6 convolution kernal, each has 5 * 5 size
+        self.conv1 = 2 * np.random.random((6, 1, 5, 5)) - 1
+        # the size for max_pool is 2 * 2, stride = 2
         self.pool1 = [2, 2]
-        # 16 convolution kernal, each has 5 * 5 size                         output: 16 * (8, 8) 
-        self.conv2 = 2*np.random.random((16, 5, 5)) - 1                              # (6, 5, 5)
-        # the size for max_pool is 2 * 2, stride = 2                         output: 16 * (4, 4)
+        # 16 convolution kernal, each has 6 * 5 * 5 size
+        self.conv2 = 2 * np.random.random((16, 6, 5, 5)) - 1
+        # the size for max_pool is 2 * 2, stride = 2
         self.pool2 = [2, 2]
-        # fully connected layer 256 -> 200                                   output: 200
-        self.fc1 = 2*np.random.random((256, 200)) - 1                                # (400, 200)
+        # fully connected layer 256 -> 200
+        self.fc1 = 2 * np.random.random((256, 200)) - 1
         # relu layer
-        # fully connected layer 200 -> 10                                    output: 10
-        self.fc2 = 2*np.random.random((200, 10)) - 1                                 # (200, 10)
+        # fully connected layer 200 -> 10
+        self.fc2 = 2 * np.random.random((200, 10)) - 1
         # relu layer
         # softmax layer
 
@@ -42,10 +42,14 @@ class LeNet(object):
         self.l7 = self.fully_connect(self.l6, self.fc2)      # (batch_sz, 10)
         self.l8 = self.relu(self.l7)                         # (batch_sz, 10)
         self.l9 = self.softmax(self.l8)                      # (batch_sz, 10)
+        # TODO : need loss function ?
         return self.l9
 
     def backward_prop(self, softmax_output, output_label):
-        l8_delta             = softmax_output - output_label                                # (batch_sz, 10)
+        # TODO : decide which delta to use
+        #l8_delta             = np.sum(softmax_output - output_label, axis=0)/batch_sz       # (batch_sz, 10)
+        #l8_delta             = softmax_output - output_label
+        l8_delta             = output_label - softmax_output
         l7_delta             = self.relu(self.l8, l8_delta, deriv=True)                     # (batch_sz, 10)
         l6_delta, self.fc2   = self.fully_connect(self.l6, self.fc2, l7_delta, deriv=True)  # (batch_sz, 200)
         l5_delta             = self.relu(self.l6, l6_delta, deriv=True)                     # (batch_sz, 200)
@@ -58,29 +62,33 @@ class LeNet(object):
 
     def convolution(self, input_map, kernal, front_delta=None, deriv=False):
         N, C, W, H = input_map.shape
-        K_NUM, K_W, K_H = kernal.shape
+        K_NUM, K_C, K_W, K_H = kernal.shape
         if deriv == False:
             feature_map = np.zeros((N, K_NUM, W-K_W+1, H-K_H+1))
             for imgId in range(N):
                 for kId in range(K_NUM):
                     for cId in range(C):
-                        # TODO multi kernals; kernal[kId,:,:]?;
-                        feature_map[imgId][kId] += convolve2d(input_map[imgId][cId], kernal[kId,:,:], mode='valid')
+                        # TODO multi kernals; kernal[kId,::-1,::-1]?;
+                        try:
+                            feature_map[imgId][kId] += convolve2d(input_map[imgId][cId], kernal[kId,cId,:,:], mode='valid')
+                        except BaseException as e:
+                            print "exception"
+                            raise e
                     # TODO need divisoin?
-                    feature_map[imgId][kId] /= C
+                    #feature_map[imgId][kId] /= C
             return feature_map
         else :
             # front->back (propagate loss)
             back_delta = np.zeros((N, C, W, H))
-            kernal_gradient = np.zeros((K_NUM, K_W, K_H))
+            kernal_gradient = np.zeros((K_NUM, K_C, K_W, K_H))
             for imgId in range(N):
                 for cId in range(C):
                     for kId in range(K_NUM):
                         padded_front_delta = \
                           np.pad(front_delta[imgId][kId], [(K_W-1, K_H-1),(K_W-1, K_H-1)], mode='constant', constant_values=0)
                         back_delta[imgId][cId] += \
-                          convolve2d(padded_front_delta, kernal[kId,::-1,::-1], mode='valid')
-                        kernal_gradient[kId] += \
+                          convolve2d(padded_front_delta, kernal[kId,cId,::-1,::-1], mode='valid')
+                        kernal_gradient[kId][cId] += \
                           convolve2d(front_delta[imgId][kId], input_map[imgId][cId][::-1][::-1], mode='valid')
             # update weights
             kernal += self.lr * kernal_gradient
@@ -115,11 +123,15 @@ class LeNet(object):
             return back_delta, fc
 
     def relu(self, x, front_delta=None, deriv=False):
+        
         if deriv == False:
+            #print x[0]
             return x * (x > 0)
         else :
             # propagate loss
-            return front_delta * 1. * (x > 0)
+            #print front_delta
+            back_delta = front_delta * 1. * (x > 0)
+            return back_delta
 
     def softmax(self, x):
         y = list()
@@ -136,28 +148,24 @@ def convertToOneHot(labels):
 
 if __name__ == '__main__':
     # size of data, batch size
-    data_size = 60000; batch_sz = 10; # 64
+    data_size = 10000; batch_sz = 64;
     # learning rate, max iteration
-    lr = 0.1;      max_iter = 5000;
+    lr = 0.1;        max_iter = 5000;
     train_imgs = fetch_MNIST.load_test_images()
     train_labs = fetch_MNIST.load_test_labels().astype(int)
     train_labs = convertToOneHot(train_labs)
-    print train_labs.shape
     #print np.max(train_imgs), np.min(train_imgs)
-    my_CNN = LeNet(lr=0.1)
+    my_CNN = LeNet(lr)
     for iters in range(max_iter):
         # starting index and ending index for input data
-        st_idx = (iters % 937) * batch_sz;
+        st_idx = (iters % 155) * batch_sz;
         input_data = train_imgs[st_idx : st_idx + batch_sz]
         output_label = train_labs[st_idx : st_idx + batch_sz]
         softmax_output = my_CNN.forward_prop(input_data)
+        #if iters % 10 == 0:
+        correct_list = [int(np.argmax(softmax_output[i])==np.argmax(output_label[i])) for i in range(batch_sz)]
+        accuracy = float(np.array(correct_list).sum()) / batch_sz
+        print "The accuracy is %f" % (accuracy)
         my_CNN.backward_prop(softmax_output, output_label)
-        break
-        '''
-        if iters % 50 == 0:
-            correct_list = [int(np.argmax(softmax_output[i])==np.argmax(output_label[i])) for i in range(batch_sz)]
-            accuracy = float(np.array(correct_list).sum()) / batch_sz
-            print "The accuracy is %f" % (accuracy)
-            continue
-        '''
-        #my_CNN.backward_prop(softmax_output, output_label)
+        if iters > 5:
+            break
