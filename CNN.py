@@ -47,7 +47,7 @@ class LeNet(object):
 
     def backward_prop(self, softmax_output, output_label):
         # TODO : decide which delta to use
-        #l8_delta             = np.sum(softmax_output - output_label, axis=0)/batch_sz       # (batch_sz, 10)
+        #l8_delta             = np.sum(output_label - softmax_output, axis=0)/batch_sz       # (batch_sz, 10)
         #l8_delta             = softmax_output - output_label
         l8_delta             = output_label - softmax_output
         l7_delta             = self.relu(self.l8, l8_delta, deriv=True)                     # (batch_sz, 10)
@@ -69,13 +69,7 @@ class LeNet(object):
                 for kId in range(K_NUM):
                     for cId in range(C):
                         # TODO multi kernals; kernal[kId,::-1,::-1]?;
-                        try:
-                            feature_map[imgId][kId] += convolve2d(input_map[imgId][cId], kernal[kId,cId,:,:], mode='valid')
-                        except BaseException as e:
-                            print "exception"
-                            raise e
-                    # TODO need divisoin?
-                    #feature_map[imgId][kId] /= C
+                        feature_map[imgId][kId] += convolve2d(input_map[imgId][cId], kernal[kId,cId,:,:], mode='valid')
             return feature_map
         else :
             # front->back (propagate loss)
@@ -150,7 +144,7 @@ if __name__ == '__main__':
     # size of data, batch size
     data_size = 10000; batch_sz = 64;
     # learning rate, max iteration
-    lr = 0.1;        max_iter = 5000;
+    lr = 0.00001;    max_iter = 5000;
     train_imgs = fetch_MNIST.load_test_images()
     train_labs = fetch_MNIST.load_test_labels().astype(int)
     train_labs = convertToOneHot(train_labs)
@@ -162,10 +156,16 @@ if __name__ == '__main__':
         input_data = train_imgs[st_idx : st_idx + batch_sz]
         output_label = train_labs[st_idx : st_idx + batch_sz]
         softmax_output = my_CNN.forward_prop(input_data)
-        #if iters % 10 == 0:
-        correct_list = [int(np.argmax(softmax_output[i])==np.argmax(output_label[i])) for i in range(batch_sz)]
-        accuracy = float(np.array(correct_list).sum()) / batch_sz
-        print "The accuracy is %f" % (accuracy)
+        if iters % 10 == 0:
+            # calculate accuracy
+            correct_list = [ int(np.argmax(softmax_output[i])==np.argmax(output_label[i])) for i in range(batch_sz) ]
+            accuracy = float(np.array(correct_list).sum()) / batch_sz
+            # calculate loss
+            correct_prob = [ softmax_output[i][np.argmax(output_label[i])] for i in range(batch_sz) ]
+            correct_prob = filter(lambda x: x > 0, correct_prob)
+            loss = -1.0 * np.sum(np.log(correct_prob))
+            print "-----------------------------------"
+            print "The %d iters result:" % iters
+            print correct_prob
+            print "The accuracy is %f The loss is %f " % (accuracy, loss)
         my_CNN.backward_prop(softmax_output, output_label)
-        if iters > 5:
-            break
