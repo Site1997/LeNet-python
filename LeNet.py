@@ -29,11 +29,11 @@ class LeNet(object):
         self.fc2 = xavier_init(200, 10, fc=True)
 
     def forward_prop(self, input_data):
-        self.l0 = np.expand_dims(input_data, axis=1) / 255   # (batc_sz, 1, 28, 28)
-        self.l1 = self.convolution(self.l0, self.conv1)      # (batc_sz, 6, 24, 24)
-        self.l2 = self.mean_pool(self.l1, self.pool1)        # (batc_sz, 6, 12, 12)
-        self.l3 = self.convolution(self.l2, self.conv2)      # (batc_sz, 16, 8, 8)
-        self.l4 = self.mean_pool(self.l3, self.pool2)        # (batc_sz, 16, 4, 4)
+        self.l0 = np.expand_dims(input_data, axis=1) / 255   # (batch_sz, 1, 28, 28)
+        self.l1 = self.convolution(self.l0, self.conv1)      # (batch_sz, 6, 24, 24)
+        self.l2 = self.mean_pool(self.l1, self.pool1)        # (batch_sz, 6, 12, 12)
+        self.l3 = self.convolution(self.l2, self.conv2)      # (batch_sz, 16, 8, 8)
+        self.l4 = self.mean_pool(self.l3, self.pool2)        # (batch_sz, 16, 4, 4)
         self.l5 = self.fully_connect(self.l4, self.fc1)      # (batch_sz, 200)
         self.l6 = self.relu(self.l5)                         # (batch_sz, 200)
         self.l7 = self.fully_connect(self.l6, self.fc2)      # (batch_sz, 10)
@@ -148,7 +148,7 @@ if __name__ == '__main__':
     # size of data;                  batch size
     data_size = train_imgs.shape[0]; batch_sz = 64;
     # learning rate; max iteration;    iter % mod (avoid index out of range)
-    lr = 0.0001;     max_iter = 50000; iter_mod = int(data_size/batch_sz)
+    lr = 0.001;     max_iter = 50000; iter_mod = int(data_size/batch_sz)
     train_labs = convertToOneHot(train_labs)
     my_CNN = LeNet(lr)
     for iters in range(max_iter):
@@ -156,7 +156,6 @@ if __name__ == '__main__':
         st_idx = (iters % iter_mod) * batch_sz
         # shuffle the dataset
         if st_idx == 0:
-            print train_imgs.shape, train_labs.shape
             train_imgs, train_labs = shuffle_dataset(train_imgs, train_labs)
         input_data = train_imgs[st_idx : st_idx + batch_sz]
         output_label = train_labs[st_idx : st_idx + batch_sz]
