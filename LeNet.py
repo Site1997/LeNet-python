@@ -42,7 +42,7 @@ class LeNet(object):
         return self.l9
 
     def backward_prop(self, softmax_output, output_label):
-        l8_delta             = output_label - softmax_output
+        l8_delta             = (output_label - softmax_output) / softmax_output.shape[0]
         l7_delta             = self.relu(self.l8, l8_delta, deriv=True)                     # (batch_sz, 10)
         l6_delta, self.fc2   = self.fully_connect(self.l6, self.fc2, l7_delta, deriv=True)  # (batch_sz, 200)
         l5_delta             = self.relu(self.l6, l6_delta, deriv=True)                     # (batch_sz, 200)
@@ -148,7 +148,7 @@ if __name__ == '__main__':
     # size of data;                  batch size
     data_size = train_imgs.shape[0]; batch_sz = 64;
     # learning rate; max iteration;    iter % mod (avoid index out of range)
-    lr = 0.001;     max_iter = 50000; iter_mod = int(data_size/batch_sz)
+    lr = 0.01;     max_iter = 50000; iter_mod = int(data_size/batch_sz)
     train_labs = convertToOneHot(train_labs)
     my_CNN = LeNet(lr)
     for iters in range(max_iter):
