@@ -75,7 +75,7 @@ class LeNet(object):
                         back_delta[imgId][cId] += \
                           convolve2d(padded_front_delta[imgId][kId], kernal[kId,cId,::-1,::-1], mode='valid')
                         kernal_gradient[kId][cId] += \
-                          convolve2d(front_delta[imgId][kId], input_map[imgId][cId][::-1][::-1], mode='valid')
+                          convolve2d(front_delta[imgId][kId], input_map[imgId,cId,::-1,::-1], mode='valid')
             # update weights
             kernal += self.lr * kernal_gradient
             return back_delta, kernal
